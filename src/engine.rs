@@ -1,16 +1,17 @@
 use std::iter;
 
 use crate::constants::WINDOW_TITLE;
+use crate::image::ImageTexture;
 use crate::shapes::{Circle, Shape, Square};
-use crate::vertex::{Vertex, INDICES, VERTICES};
+use crate::vertex::{ColoredVertex, TexturedVertex, Vertex, INDICES, VERTICES};
 use wgpu::{
     util::DeviceExt, BlendComponent, Buffer, Features, Limits, PipelineLayoutDescriptor,
     RenderPipeline, ShaderModuleDescriptor, ShaderSource,
 };
 use winit::{
     event::{ElementState, Event, KeyEvent, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    keyboard::{Key, KeyCode, PhysicalKey},
+    event_loop::EventLoop,
+    keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowBuilder},
 };
 
@@ -94,6 +95,7 @@ struct State<'a> {
     // unsafe references to the window's resources.
     window: &'a Window,
     render_pipeline: RenderPipeline,
+    diffuse_bind_group: wgpu::BindGroup,
     // Normal state
     vertex_buffer: Buffer,
     index_buffer: Buffer,
@@ -162,9 +164,12 @@ impl<'a> State<'a> {
         };
         surface.configure(&device, &config);
 
+        let texture = ImageTexture::new(&device, &queue);
+        let diffuse_bind_group = texture.create_texture_and_bind_group(&device);
+
         let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("shader"),
-            source: ShaderSource::Wgsl(include_str!("shaders/shader.wgsl").into()),
+            source: ShaderSource::Wgsl(include_str!("shaders/textured.wgsl").into()),
         });
 
         let render_pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
@@ -179,7 +184,7 @@ impl<'a> State<'a> {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[Vertex::description()],
+                buffers: &[TexturedVertex::description()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -229,10 +234,10 @@ impl<'a> State<'a> {
         });
         let num_indices = INDICES.len() as u32;
 
-        let circle = Circle::new(5, 0.5);
+        let circle = Circle::new([0.0, 0.0], 50, 0.5);
         let circle_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(&circle.vertices()),
+            contents: bytemuck::cast_slice(&circle.col_vertices([0.9, 0.5, 0.7, 1.0])),
             usage: wgpu::BufferUsages::VERTEX,
         });
         let circle_indices = circle.indices();
@@ -242,7 +247,6 @@ impl<'a> State<'a> {
             usage: wgpu::BufferUsages::INDEX,
         });
         let circle_num_indices = circle_indices.len() as u32;
-        println!("{:?}", circle.vertices());
 
         Self {
             surface,
@@ -252,6 +256,7 @@ impl<'a> State<'a> {
             size,
             window,
             render_pipeline,
+            diffuse_bind_group,
             vertex_buffer,
             index_buffer,
             num_indices,
@@ -330,6 +335,7 @@ impl<'a> State<'a> {
                 timestamp_writes: None,
             });
             render_pass.set_pipeline(&self.render_pipeline);
+            // render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             if self.render_circle {
                 render_pass.set_vertex_buffer(0, self.circle_vertex_buffer.slice(..));
                 render_pass.set_index_buffer(
@@ -338,6 +344,7 @@ impl<'a> State<'a> {
                 );
                 render_pass.draw_indexed(0..self.circle_num_indices, 0, 0..1);
             } else {
+                render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
                 // slice(..) specifies what part of the buffer to use (all of it).
                 // If we wanted to only use part of a buffer we could provide another slice object.
                 render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
