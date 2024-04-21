@@ -1,7 +1,6 @@
 use std::iter;
 
 use crate::camera::{Camera, CameraState};
-use crate::camera_uniform::{self, CameraUniform};
 use crate::constants::WINDOW_TITLE;
 use crate::shapes::{Circle, Shape};
 use crate::texture::ImageTexture;
@@ -171,7 +170,7 @@ impl<'a> State<'a> {
             aspect: config.width as f32 / config.height as f32,
             ..Default::default()
         };
-        let mut camera_state = CameraState::new(&device, camera);
+        let camera_state = CameraState::new(&device, camera);
 
         let diffuse_texture_bytes = include_bytes!("../assets/happy-tree.png");
         let diffuse_texture =
