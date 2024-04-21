@@ -1,5 +1,5 @@
 use image::{self, GenericImageView, ImageBuffer, Rgb};
-use wgpu::{BindGroup, Device, Queue, Texture};
+use wgpu::{BindGroup, BindGroupLayout, Device, Queue, Texture};
 
 pub struct ImageTexture {
     texture_size: wgpu::Extent3d,
@@ -10,7 +10,7 @@ impl ImageTexture {
     pub fn new(device: &Device, queue: &Queue) -> Self {
         let diffuse_bytes = include_bytes!("../assets/happy-tree.png");
         let diffuse_image = image::load_from_memory(diffuse_bytes).unwrap();
-        let diffuse_rgba = diffuse_image.to_rgb8();
+        let diffuse_rgba = diffuse_image.to_rgba8();
         let dimensions = diffuse_image.dimensions();
 
         let texture_size = wgpu::Extent3d {
@@ -58,7 +58,7 @@ impl ImageTexture {
         self.texture_size.width
     }
 
-    pub fn create_texture_and_bind_group(&self, device: &Device) -> BindGroup {
+    pub fn create_texture_and_bind_group(&self, device: &Device) -> (BindGroupLayout, BindGroup) {
         let diffuse_texture_view = self
             .diffuse_texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -109,6 +109,6 @@ impl ImageTexture {
             ],
             label: Some("diffuse_bind_group"),
         });
-        return diffuse_bind_group;
+        return (texture_bind_group_layout, diffuse_bind_group);
     }
 }

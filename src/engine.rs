@@ -165,7 +165,7 @@ impl<'a> State<'a> {
         surface.configure(&device, &config);
 
         let texture = ImageTexture::new(&device, &queue);
-        let diffuse_bind_group = texture.create_texture_and_bind_group(&device);
+        let (texture_bind_group_layout, diffuse_bind_group) = texture.create_texture_and_bind_group(&device);
 
         let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("shader"),
@@ -173,8 +173,8 @@ impl<'a> State<'a> {
         });
 
         let render_pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: Some("My Pipeline Layout"),
-            bind_group_layouts: &[],
+            label: Some("Render Pipeline Layout"),
+            bind_group_layouts: &[&texture_bind_group_layout],
             push_constant_ranges: &[],
         });
 
