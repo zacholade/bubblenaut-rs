@@ -171,7 +171,7 @@ impl<'a> State<'a> {
             aspect: config.width as f32 / config.height as f32,
             ..Default::default()
         };
-        let camera_state = CameraState::new(&device, &queue, camera);
+        let mut camera_state = CameraState::new(&device, camera);
 
         let diffuse_texture_bytes = include_bytes!("../assets/happy-tree.png");
         let diffuse_texture =

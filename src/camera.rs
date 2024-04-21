@@ -52,8 +52,9 @@ pub struct CameraState {
 }
 
 impl CameraState {
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, camera: Camera) -> Self {
+    pub fn new(device: &wgpu::Device, camera: Camera) -> Self {
         let mut uniform = CameraUniform::new();
+        uniform.update_view_proj(&camera);
 
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
@@ -95,7 +96,7 @@ impl CameraState {
         }
     }
 
-    pub fn update(&mut self, queue: &wgpu::Queue) {
+    pub fn update(&mut self) {
         self.uniform.update_view_proj(&self.camera);
     }
 }

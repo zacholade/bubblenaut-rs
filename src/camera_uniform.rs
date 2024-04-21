@@ -18,5 +18,6 @@ impl CameraUniform {
 
     pub fn update_view_proj(&mut self, camera: &Camera) {
         self.view_proj = camera.projection_matrix().into();
+        println!("{:?}", self.view_proj);
     }
 }
