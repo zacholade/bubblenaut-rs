@@ -1,9 +1,11 @@
 use std::iter;
 
+use crate::camera::{Camera, CameraState};
+use crate::camera_uniform::{self, CameraUniform};
 use crate::constants::WINDOW_TITLE;
+use crate::shapes::{Circle, Shape};
 use crate::texture::ImageTexture;
-use crate::shapes::{Circle, Shape, Square};
-use crate::vertex::{ColoredVertex, TexturedVertex, Vertex, INDICES, VERTICES};
+use crate::vertex::{TexturedVertex, Vertex, INDICES, VERTICES};
 use wgpu::{
     util::DeviceExt, BlendComponent, Buffer, Features, Limits, PipelineLayoutDescriptor,
     RenderPipeline, ShaderModuleDescriptor, ShaderSource,
@@ -95,6 +97,7 @@ struct State<'a> {
     // unsafe references to the window's resources.
     window: &'a Window,
     render_pipeline: RenderPipeline,
+    camera_state: CameraState,
     diffuse_bind_group: wgpu::BindGroup,
     // Normal state
     vertex_buffer: Buffer,
@@ -164,8 +167,16 @@ impl<'a> State<'a> {
         };
         surface.configure(&device, &config);
 
+        let camera = Camera {
+            aspect: config.width as f32 / config.height as f32,
+            ..Default::default()
+        };
+        let camera_state = CameraState::new(&device, &queue, camera);
+
         let diffuse_texture_bytes = include_bytes!("../assets/happy-tree.png");
-        let diffuse_texture = ImageTexture::from_bytes(&device, &queue, diffuse_texture_bytes, "My First Texture").unwrap();
+        let diffuse_texture =
+            ImageTexture::from_bytes(&device, &queue, diffuse_texture_bytes, "My First Texture")
+                .unwrap();
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
@@ -203,7 +214,7 @@ impl<'a> State<'a> {
                 },
             ],
             label: Some("diffuse_bind_group"),
-            });
+        });
 
         let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("shader"),
@@ -212,7 +223,7 @@ impl<'a> State<'a> {
 
         let render_pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[&texture_bind_group_layout],
+            bind_group_layouts: &[&texture_bind_group_layout, &camera_state.bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -294,6 +305,7 @@ impl<'a> State<'a> {
             size,
             window,
             render_pipeline,
+            camera_state,
             diffuse_bind_group,
             vertex_buffer,
             index_buffer,
@@ -373,6 +385,7 @@ impl<'a> State<'a> {
                 timestamp_writes: None,
             });
             render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_bind_group(1, &self.camera_state.bind_group, &[]);
             // render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             if self.render_circle {
                 render_pass.set_vertex_buffer(0, self.circle_vertex_buffer.slice(..));

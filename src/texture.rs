@@ -1,5 +1,5 @@
-use image::{self, GenericImageView, ImageBuffer, Rgb};
-use wgpu::{BindGroup, BindGroupLayout, Device, Error, Queue, Texture};
+use image::GenericImageView;
+use wgpu;
 
 pub struct ImageTexture {
     pub texture: wgpu::Texture,
@@ -9,8 +9,8 @@ pub struct ImageTexture {
 
 impl ImageTexture {
     pub fn from_bytes(
-        device: &Device,
-        queue: &Queue,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
         bytes: &[u8],
         label: &str,
     ) -> Result<Self, image::ImageError> {
@@ -19,8 +19,8 @@ impl ImageTexture {
     }
 
     pub fn from_image(
-        device: &Device,
-        queue: &Queue,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
         img: &image::DynamicImage,
         label: Option<&str>,
     ) -> Self {
