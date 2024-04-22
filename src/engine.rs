@@ -5,6 +5,7 @@ use crate::constants::WINDOW_TITLE;
 use crate::shapes::{Circle, Shape};
 use crate::texture::ImageTexture;
 use crate::vertex::{TexturedVertex, Vertex, INDICES, VERTICES};
+use cgmath::Vector3;
 use wgpu::{
     util::DeviceExt, BlendComponent, Buffer, Features, Limits, PipelineLayoutDescriptor,
     RenderPipeline, ShaderModuleDescriptor, ShaderSource,
@@ -356,6 +357,11 @@ impl<'a> State<'a> {
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+
+        self.camera_state.camera.eye += Vector3::new(-0.01, 0.01, 0.0);
+        self.camera_state.camera.target += Vector3::new(-0.01, 0.01, 0.0);
+        self.camera_state.update();
+        self.queue.write_buffer(&self.camera_state.buffer, 0, bytemuck::cast_slice(&[self.camera_state.uniform]));
 
         let mut encoder = self
             .device
