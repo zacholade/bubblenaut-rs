@@ -1,4 +1,5 @@
 use std::iter;
+use std::sync::Arc;
 
 use crate::camera::{Camera, CameraState};
 use crate::constants::WINDOW_TITLE;
@@ -10,80 +11,24 @@ use wgpu::{
     util::DeviceExt, BlendComponent, Buffer, Features, Limits, PipelineLayoutDescriptor,
     RenderPipeline, ShaderModuleDescriptor, ShaderSource,
 };
+use wgpu::{MemoryHints, PipelineCompilationOptions, Trace};
+use winit::application::ApplicationHandler;
+use winit::event_loop::ActiveEventLoop;
+use winit::window::WindowId;
 use winit::{
     event::{ElementState, Event, KeyEvent, WindowEvent},
     event_loop::EventLoop,
     keyboard::{KeyCode, PhysicalKey},
-    window::{Window, WindowBuilder},
+    window::Window,
 };
 
 pub async fn run() {
     env_logger::init();
     // Unwrap OK. Can only panic if not making event loop in the made thread.
     let event_loop = EventLoop::new().unwrap();
-    let window = WindowBuilder::new()
-        .with_title(WINDOW_TITLE)
-        .build(&event_loop)
-        .unwrap();
-
-    let mut state = State::new(&window).await;
-
-    // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
-    // dispatched any events. This is ideal for games and similar applications.
-    // event_loop.set_control_flow(ControlFlow::Poll);
-    event_loop
-        .run(move |event, control_flow| {
-            match event {
-                Event::WindowEvent {
-                    ref event,
-                    window_id,
-                } if window_id == state.window().id() => {
-                    if !state.input(event) {
-                        match event {
-                            WindowEvent::CloseRequested
-                            | WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::Escape),
-                                        ..
-                                    },
-                                ..
-                            } => control_flow.exit(),
-                            WindowEvent::Resized(physical_size) => {
-                                state.resize(*physical_size);
-                            }
-                            WindowEvent::RedrawRequested => {
-                                state.window().request_redraw();
-                                state.update();
-                                match state.render() {
-                                    Ok(_) => {}
-                                    // Reconfigure the surface if it's lost or outdated
-                                    Err(
-                                        wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
-                                    ) => {
-                                        log::error!("Surface lost or outdated");
-                                        state.resize(state.size);
-                                    }
-                                    // The system is out of memory, we should probably quit
-                                    Err(wgpu::SurfaceError::OutOfMemory) => {
-                                        log::error!("OutOfMemory");
-                                        control_flow.exit();
-                                    }
-                                    // We're ignoring timeouts
-                                    Err(wgpu::SurfaceError::Timeout) => {
-                                        log::warn!("Surface timeout")
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                _ => {}
-            }
-        })
-        .unwrap();
+    event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
+    let mut app = App::default();
+    event_loop.run_app(&mut app).unwrap();
 }
 
 struct State<'a> {
@@ -95,7 +40,6 @@ struct State<'a> {
     // The window must be declared after the surface so
     // it gets dropped after it as the surface contains
     // unsafe references to the window's resources.
-    window: &'a Window,
     render_pipeline: RenderPipeline,
     camera_state: CameraState,
     diffuse_bind_group: wgpu::BindGroup,
@@ -111,13 +55,66 @@ struct State<'a> {
     render_circle: bool,
 }
 
+#[derive(Default)]
+pub struct App<'a> {
+    window: Option<Arc<Window>>,
+    state: Option<State<'a>>,
+}
+
+
+impl<'a> ApplicationHandler for App<'a> {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if self.window.is_none() {
+            let window = Arc::new(event_loop.create_window(Window::default_attributes()).unwrap());
+            self.window = Some(window.clone());
+
+            let state = pollster::block_on(State::new(window.clone()));
+            self.state = Some(state);
+        }
+    }
+
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        let state = self.state.as_mut().unwrap();
+        let window = self.window.as_mut().unwrap();
+
+        match event {
+            WindowEvent::CloseRequested => {
+                println!("The close button was pressed; stopping");
+                event_loop.exit();
+            }
+            WindowEvent::RedrawRequested => {
+                window.request_redraw();
+                state.update();
+                match state.render() {
+                    Ok(_) => {}
+                    // Reconfigure the surface if it's lost or outdated
+                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                        log::error!("Surface lost or outdated");
+                        state.resize(state.size);
+                    }
+                    // The system is out of memory, we should probably quit
+                    Err(wgpu::SurfaceError::OutOfMemory | wgpu::SurfaceError::Other) => {
+                        log::error!("OutOfMemory");
+                        event_loop.exit();
+                    }
+                    // We're ignoring timeouts
+                    Err(wgpu::SurfaceError::Timeout) => {
+                        log::warn!("Surface timeout")
+                    }
+                }
+            }
+            _ => (),
+        }
+    }
+}
+
 impl<'a> State<'a> {
-    async fn new(window: &'a Window) -> State<'a> {
+    async fn new(window: Arc<Window>) -> State<'a> {
         let size = window.inner_size();
 
         // The instance is a handle to our GPU
         // BackendBit::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
             ..Default::default()
         });
@@ -134,14 +131,13 @@ impl<'a> State<'a> {
             .unwrap();
 
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: None,
-                    required_features: Features::empty(),
-                    required_limits: Limits::default(),
-                },
-                None,
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: None,
+                required_features: Features::empty(),
+                required_limits: Limits::default(),
+                memory_hints: MemoryHints::default(),
+                trace: Trace::default(),
+            })
             .await
             .unwrap();
 
@@ -232,12 +228,13 @@ impl<'a> State<'a> {
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[TexturedVertex::description()],
+                compilation_options: PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
                     blend: Some(wgpu::BlendState {
@@ -246,6 +243,7 @@ impl<'a> State<'a> {
                     }),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
+                compilation_options: PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -269,6 +267,7 @@ impl<'a> State<'a> {
                 alpha_to_coverage_enabled: false,
             },
             multiview: None,
+            cache: None,
         });
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -303,7 +302,6 @@ impl<'a> State<'a> {
             queue,
             config,
             size,
-            window,
             render_pipeline,
             camera_state,
             diffuse_bind_group,
@@ -315,10 +313,6 @@ impl<'a> State<'a> {
             circle_num_indices,
             render_circle: false,
         }
-    }
-
-    fn window(&self) -> &Window {
-        &self.window
     }
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -361,7 +355,11 @@ impl<'a> State<'a> {
         self.camera_state.camera.eye += Vector3::new(-0.01, 0.01, 0.0);
         self.camera_state.camera.target += Vector3::new(-0.01, 0.01, 0.0);
         self.camera_state.update();
-        self.queue.write_buffer(&self.camera_state.buffer, 0, bytemuck::cast_slice(&[self.camera_state.uniform]));
+        self.queue.write_buffer(
+            &self.camera_state.buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera_state.uniform]),
+        );
 
         let mut encoder = self
             .device
