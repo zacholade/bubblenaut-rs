@@ -18,7 +18,3 @@ winit = "0.29.15"
 [[bin]]
 name = "engine"
 path = "src/bin/engine/main.rs"
-
-[[bin]]
-name = "game"
-path = "src/bin/gui/main.rs"
